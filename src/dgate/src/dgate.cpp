@@ -1224,6 +1224,10 @@ Spectra0013 Wed, 5 Feb 2014 16:57:49 -0200: Fix cppcheck bugs #8 e #9
 20250831        mvh	---- RELEASE 1.5.0f
 20250909        mvh	Added OffsetDatesInDICOMObject; offsetdates import converter
 20250910        mvh	Only change when date scanned correctly
+20250929        mvh	Added script option after all move commands
+20251031        mvh	MB fixed truncation of script at 260 characters in "process by". Max length is now 360.
+20260107        mvh	Added bitwise lua functions lshift,rshift,band,bxor,bnot; changed nesting in servertask to avoid compiler limit
+20260107        mvh	Also show text of 2 and 4 header elements
 
 ENDOFUPDATEHISTORY
 */
@@ -1920,10 +1924,20 @@ BOOL	PrintUDATA(UINT	Size, void *data, UINT16 TypeCode, char *dest)
 			case	2:
 				tint16 = (*((UINT16 *) data));
 				sprintf(dest, "(%d|%x)", (UINT) tint16, (UINT) tint16);
+				if(IsDataAlpha(Size, (BYTE*) data)) 
+					{
+					TranslateText((char*)data, Str, Size);
+					sprintf(dest+strlen(dest), "\"%s\"", Str);
+					}
 				break;
 			case	4:
 				tint32 = (*((UINT32 *) data));
 				sprintf(dest, "[%d|%x]", (UINT) tint32, (UINT) tint32);
+				if(IsDataAlpha(Size, (BYTE*) data)) 
+					{
+					TranslateText((char*)data, Str, Size);
+					sprintf(dest+strlen(dest), "\"%s\"", Str);
+					}
 				break;
 			default:
 				if(IsDataAlpha(Size, (BYTE*) data))
@@ -8351,6 +8365,37 @@ static ExtendedPDU_Service ScriptForwardPDU[1][MAXExportConverters];	// max 20*2
     return 1;
   }
   
+  // bitwise operators
+  static int luarshift(lua_State *L)
+  { unsigned int i1=lua_tointeger(L,1);
+    unsigned int i2=lua_tointeger(L,2);
+    lua_pushinteger(L, i1>>i2);
+    return 1;
+  }
+  static int lualshift(lua_State *L)
+  { unsigned int i1=lua_tointeger(L,1);
+    unsigned int i2=lua_tointeger(L,2);
+    lua_pushinteger(L, i1<<i2);
+    return 1;
+  }
+  static int luaband(lua_State *L)
+  { unsigned int i1=lua_tointeger(L,1);
+    unsigned int i2=lua_tointeger(L,2);
+    lua_pushinteger(L, i1&i2);
+    return 1;
+  }
+  static int luabxor(lua_State *L)
+  { unsigned int i1=lua_tointeger(L,1);
+    unsigned int i2=lua_tointeger(L,2);
+    lua_pushinteger(L, i1^i2);
+    return 1;
+  }
+  static int luabnot(lua_State *L)
+  { unsigned int i1=lua_tointeger(L,1);
+    lua_pushinteger(L, ~i1);
+    return 1;
+  }
+
 static void HTML(const char *string, ...);
 static int CGI(char *out, const char *name, const char *def);
 
@@ -9085,6 +9130,11 @@ const char *do_lua(lua_State **L, char *cmd, struct scriptdata *sd)
     lua_register      (*L, "dicomstore",    luadicomstore);
     lua_register      (*L, "dicomecho",     luadicomecho);
     lua_register      (*L, "tickcount",     luatickcount);
+    lua_register      (*L, "rshift",        luarshift);
+    lua_register      (*L, "lshift",        lualshift);
+    lua_register      (*L, "band",          luaband);
+    lua_register      (*L, "bxor",          luabxor);
+    lua_register      (*L, "bnot",          luabnot);
     lua_register      (*L, "listoldestpatients", lualistoldestpatients);
     lua_createtable   (*L, 0, 0); 
     lua_createtable   (*L, 0, 0);
@@ -12449,7 +12499,7 @@ BOOL prefetch_queue(const char *operation, int N, char *patientid, const char *s
   { strncpy(data+100, studyuid,  64);
     strncpy(data+165, seriesuid, 64);
     strncpy(data+230, server,   360);
-    return into_queue_unique(q[N+1], data, 490);
+    return into_queue_unique(q[N+1], data, 590);
   }
   else
   { strncpy(data+82,  server,    17);
@@ -13422,12 +13472,12 @@ PrintOptions ()
 	fprintf(stderr, "    --deletesopfromdb:pat,study,series,sop  Delete specified image from db only\n" );
 	fprintf(stderr, "\n");
 	fprintf(stderr, "DICOM move options:\n");
-	fprintf(stderr, "    --movepatient:source,dest,patid         Move patient, source e.g. (local)\n" );
-	fprintf(stderr, "    --movestudy:source,dest,patid:studyuid  Move study, patid: optional\n" );
-	fprintf(stderr, "    --moveaccession:source,dest,patid:acc   Move by Accession#, patid: optional\n" );
-	fprintf(stderr, "    --movestudies:source,dest,date(range)   Move studies on date\n" );
-	fprintf(stderr, "    --moveseries:src,dst,patid:seruid,stuid Move series patid: optional\n" );
-	fprintf(stderr, "    --move:src,dst,p,st,ser,sop             Move patient..image\n" );
+	fprintf(stderr, "    --movepatient:source,dest,patid,script  Move patient, source e.g. (local)\n" );
+	fprintf(stderr, "    --movestudy:source,dest,patid:suid,scr  Move study, patid: optional\n" );
+	fprintf(stderr, "    --moveaccession:source,dest,patid:acc,s Move by Accession#, patid: optional\n" );
+	fprintf(stderr, "    --movestudies:source,dest,date(range),s Move studies on date\n" );
+	fprintf(stderr, "    --moveseries:src,dst,pat:seruid,suid,s  Move series patid: optional\n" );
+	fprintf(stderr, "    --move:src,dst,p,st,ser,sop,script      Move patient..image script optional\n" );
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Modification of dicom objects:\n");
 	fprintf(stderr, "    --modifypatid:patid,file  Change patid of given file\n" );
@@ -20991,7 +21041,7 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 	char blank[]="";
 	char	TimeString[128];
 	
-	char *p = strchr(SilentText, ','), *q=NULL, *r1=NULL, *s1=NULL, *t1=NULL;
+	char *p = strchr(SilentText, ','), *q=NULL, *r1=NULL, *s1=NULL, *t1=NULL, *u1=NULL;
 	GuiRequest++;
 
 	if (memcmp(SilentText, "lua:", 4)==0)
@@ -21002,6 +21052,7 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		p = (char *)do_lua(&(PDU.L), "return returnfile", &sd);
 		if (p) strcpy(tempfile, p);
 		if (sd.DDO) delete sd.DDO;
+		return;
 		}
 
 	if (memcmp(SilentText, "luastart:", 9)==0)
@@ -21011,6 +21062,7 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		p = (char *)do_lua(&(PDU.L), SilentText+9, &sd);
 		if (p) strcpy(Response, p);
 		if (sd.DDO) delete sd.DDO;
+		return;
 		}
 
 	if (memcmp(SilentText, "globallua:", 10)==0)		////// Note: not used by dgate --dolua: at all, for use in servercommand only
@@ -21020,9 +21072,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		p = (char *)do_lua(&(globalPDU.L), SilentText+10, &sd);
 		if (p) strcpy(Response, p);
 		LeaveCriticalSection(&dolua_critical);
+		return;
 		}
 
-	else if (memcmp(SilentText, "extract:", 8)==0)
+	if (memcmp(SilentText, "extract:", 8)==0)
 		{
 		char t[512], u[512];
 		Database DB;
@@ -21137,9 +21190,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			}
 			else
 				strcpy(Response, "1");
+		return;
 		}
 
-	else if (memcmp(SilentText, "todbf:", 6)==0)
+	if (memcmp(SilentText, "todbf:", 6)==0)
 		{
 		char t[512], u[512];
 		Database DB;
@@ -21241,9 +21295,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			}
 		else
 			strcpy(Response, "1");
+		return;
 		}
 
-	else if (memcmp(SilentText, "query:", 6)==0 || memcmp(SilentText, "query2:", 7)==0 )
+	if (memcmp(SilentText, "query:", 6)==0 || memcmp(SilentText, "query2:", 7)==0 )
 		{
 		int n=1;
 		unsigned int i, L, mx,  flds=1;
@@ -21346,9 +21401,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			DB.Close();
 			QueryFromGui++;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "patientfinder:", 14)==0 ||
+	if (memcmp(SilentText, "patientfinder:", 14)==0 ||
 		 memcmp(SilentText, "studyfinder:", 12)==0 ||
 		 memcmp(SilentText, "seriesfinder:", 13)==0 ||
 		 memcmp(SilentText, "imagefinder:", 12)==0 )
@@ -21412,9 +21468,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (memcmp(SilentText, "ser", 3)==0) PatientStudyFinder(items[0], items[1], format, f, "SERIES");
 		if (memcmp(SilentText, "ima", 3)==0) PatientStudyFinder(items[0], items[1], format, f, "IMAGE");
 		fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "imagelister:", 12)==0 ||
+	if (memcmp(SilentText, "imagelister:", 12)==0 ||
 		 memcmp(SilentText, "serieslister:", 13)==0 )
 		{
 		int i, n=1, L;//, flds=1, mx;
@@ -21466,9 +21523,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (SilentText[1]=='m') ImageFileLister(items[0], items[1], NULL, items[2], NULL, format, f);
 		else 			SeriesUIDLister(items[0], items[1], items[2], format, f);
 		fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "addrecord:", 10)==0)
+	if (memcmp(SilentText, "addrecord:", 10)==0)
 		{
 		int i, n=1, L;
 		char *items[3];
@@ -21494,9 +21552,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			DB.Close();
 			QueryFromGui++;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "deleterecord:", 13)==0)
+	if (memcmp(SilentText, "deleterecord:", 13)==0)
 		{
 		Database DB;
 		if (DB.Open ( DataSource, UserName, Password, DataHost ) )
@@ -21506,14 +21565,16 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			DB.Close();
 			QueryFromGui++;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "deleteimagefromdb:", 18)==0)
+	if (memcmp(SilentText, "deleteimagefromdb:", 18)==0)
 		{
 		DeleteImageFile(SilentText+18, TRUE);
+		return;
 		}
 
-	else if (memcmp(SilentText, "deletesopfromdb:", 16)==0)
+	if (memcmp(SilentText, "deletesopfromdb:", 16)==0)
 		{
 		Database DB;
 		if (DB.Open ( DataSource, UserName, Password, DataHost ) )
@@ -21530,52 +21591,62 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			     }
 			  }
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "deleteimagefile:", 16)==0)
+	if (memcmp(SilentText, "deleteimagefile:", 16)==0)
 		{
 		DeleteImageFile(SilentText+16, FALSE);
 		DeleteImageFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "deletepatient:", 14)==0)
+	if (memcmp(SilentText, "deletepatient:", 14)==0)
 		{
 		DeletePatient(SilentText+14, FALSE, Thread);
 		DeletePatientFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "deletestudy:", 12)==0)
+	if (memcmp(SilentText, "deletestudy:", 12)==0)
 		{
 		DeleteStudy(SilentText+12, FALSE, Thread);
 		DeleteStudyFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "deletestudies:", 14)==0)
+	if (memcmp(SilentText, "deletestudies:", 14)==0)
 		{
 		DeleteStudies(SilentText+14, FALSE, Thread);
 		DeleteStudiesFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "deleteseries:", 13)==0)
+	if (memcmp(SilentText, "deleteseries:", 13)==0)
 		{
 		DeleteSeries(SilentText+13, FALSE, Thread);
 		DeleteSeriesFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "deleteimage:", 12)==0)
+	if (memcmp(SilentText, "deleteimage:", 12)==0)
 		{
 		DeleteImage(SilentText+12, FALSE, Thread);
 		DeleteImageFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "movepatient:", 12)==0)
+	if (memcmp(SilentText, "movepatient:", 12)==0)
 		{
 		if (p) 
 		{ *p++=0;				// points after 1st comma
 		  q = strchr(p, ',');
 		  if (q) 
 		  { *q++=0;				// points after 2nd comma
-		    if (DcmMove(q, SilentText+12, p, "", "", "", "", "", "", "", "", 6, "", Thread))
+	            u1 = strchr(q, ',');
+		    if (u1) *u1++=0;			// points after optional 3rd comma
+
+		    if (DcmMove(q, SilentText+12, p, "", "", "", "", "", "", "", "", 6, u1?u1:blank, Thread))
 		      sprintf(Response, "1 Move failed from %s to %s", SilentText+12, p);
 		    else
 		    { MovePatientFromGui++;
@@ -21583,25 +21654,29 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		    }
 		  }
 		}
+		return;
 		}
 
-	else if (memcmp(SilentText, "movestudy:", 10)==0)
+	if (memcmp(SilentText, "movestudy:", 10)==0)
 		{
 		if (p) 
 		  { *p++=0;				// points after 1st comma
 		    q = strchr(p, ',');
 		    if (q) 
 		    { *q++=0;				// points after 2nd comma
+	              u1 = strchr(q, ',');
+		      if (u1) *u1++=0;			// points after optional 3rd comma
+
 		      s1 = strchr(q, ':');			// patid optional
 		      if (s1)
 		      { *s1=0;
-			r1 = q;
+                        r1 = q;
 			q = s1+1;
 		       }
 		      else
 			r1 = blank;
 		      
-		      if (DcmMove(r1, SilentText+10, p, q, "", "", "", "", "", "", "", 7, "", Thread))
+		      if (DcmMove(r1, SilentText+10, p, q, "", "", "", "", "", "", "", 7, u1?u1:blank, Thread))
 			sprintf(Response, "1 Move failed from %s to %s", SilentText+10, p);
 		      else
 		      { MoveStudyFromGui++;
@@ -21609,15 +21684,19 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		      }
 		    }
 		  }
+		return;
 		}
 
-	else if (memcmp(SilentText, "moveaccession:", 14)==0)
+	if (memcmp(SilentText, "moveaccession:", 14)==0)
 		{
 		if (p) 
 		  { *p++=0;				// points after 1st comma
 		    q = strchr(p, ',');
 		    if (q) 
 		    { *q++=0;				// points after 2nd comma
+	              u1 = strchr(q, ',');
+		      if (u1) *u1++=0;			// points after optional 3rd comma
+
 		      s1 = strchr(q, ':');			// patid optional
 		      if (s1)
 		      { *s1=0;
@@ -21628,7 +21707,7 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			r1 = blank;
 		      
 		      // 7777 is a magic number
-		      if (DcmMove(r1, SilentText+14, p, q, "", "", "", "", "", "", "", 7777, "", Thread))
+		      if (DcmMove(r1, SilentText+14, p, q, "", "", "", "", "", "", "", 7777, u1?u1:blank, Thread))
 			sprintf(Response, "1 Move failed from %s to %s", SilentText+14, p);
 		      else
 		      { MoveStudyFromGui++;
@@ -21636,16 +21715,20 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		      }
 		    }
 		  }
+		return;
 		}
 
-	else if (memcmp(SilentText, "movestudies:", 12)==0)
+	if (memcmp(SilentText, "movestudies:", 12)==0)
 		{
 		if (p) 
 		  { *p++=0;				// points after 1st comma
 		    q = strchr(p, ',');
 		    if (q) 
 		    { *q++=0;				// points after 2nd comma
-		      if (DcmMove("", SilentText+12, p, "", "", "", "", q, "", "", "", 8, "", Thread))
+	              u1 = strchr(q, ',');
+		      if (u1) *u1++=0;			// points after optional 3rd comma
+
+		      if (DcmMove("", SilentText+12, p, "", "", "", "", q, "", "", "", 8, u1?u1:blank, Thread))
 			sprintf(Response, "1 Move failed from %s to %s", SilentText+12, p);
 		      else
 		      { MoveStudiesFromGui++;
@@ -21653,67 +21736,78 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		      }
 		    }
 		  }
+		return;
 		}
 
-	else if (memcmp(SilentText, "moveseries:", 11)==0)
-		{
-		t1 = blank;
-		if (p) 
-		{ *p++=0;				// points after 1st comma
-		  q = strchr(p, ',');
-		  if (q) 
-		  { *q++=0;				// points after 2nd comma
-		    t1 = strchr(q, ',');
-		    if (t1) *t1++=0;			// points after 3rd comma
-		    else t1 = blank;
-
-		    s1 = strchr(q, ':');			// patid optional
-		    if (s1)
-		    {   *s1=0;
-		      r1 = q;
-		      q = s1+1;
-		    }
-		    else
-		      r1 = blank;
-
-		    if (DcmMove(r1, SilentText+11, p, t1, q, "", "", "", "", "", "", 9, "", Thread))
-		      sprintf(Response, "1 Move failed from %s to %s", SilentText+11, p);
-		    else
-		    { MoveSeriesFromGui++;
-		      strcpy(Response, "0");
+	if (memcmp(SilentText, "moveseries:", 11)==0)
+		{ t1 = blank;
+		  if (p) 
+		  { *p++=0;				// points after 1st comma
+		    q = strchr(p, ',');
+		    if (q) 
+		    { *q++=0;				// points after 2nd comma
+		      t1 = strchr(q, ',');
+		      if (t1) *t1++=0;			// points after 3rd comma
+		      else t1 = blank;
+		  
+	              u1 = strchr(t1, ',');
+		      if (u1) *u1++=0;			// points after optional 4rd comma
+		  
+		      s1 = strchr(q, ':');			// patid optional
+		      if (s1)
+		      {   *s1=0;
+		        r1 = q;
+		        q = s1+1;
+		      }
+		      else
+		        r1 = blank;
+		  
+		      if (DcmMove(r1, SilentText+11, p, t1, q, "", "", "", "", "", "", 9, u1?u1:blank, Thread))
+		        sprintf(Response, "1 Move failed from %s to %s", SilentText+11, p);
+		      else
+		      { MoveSeriesFromGui++;
+		        strcpy(Response, "0");
+		      }
 		    }
 		  }
-		}
+		return;
 		}
 
-	else if (memcmp(SilentText, "packdbf:", 8)==0)
+	if (memcmp(SilentText, "packdbf:", 8)==0)
 		{
 		Database DB;
 		NeedPack = 3;	// pack and threaded index creation
 		DB.Open ( DataSource, UserName, Password, DataHost);
+		return;
 		}
 
-	else if (memcmp(SilentText, "clonedb:", 8)==0)
+	if (memcmp(SilentText, "clonedb:", 8)==0)
 		{
 		CloneDB(SilentText+8);
+		return;
 		}
 
-	else if (memcmp(SilentText, "indexdbf:", 9)==0)
+	if (memcmp(SilentText, "indexdbf:", 9)==0)
 		{
 		Database DB;
 		NeedPack = 4;	// threaded index creation - used after full regen from GUI
 		DB.Open ( DataSource, UserName, Password, DataHost);
+		return;
 		}
 
-	else if (memcmp(SilentText, "browsepatient:", 14)==0)
+	if (memcmp(SilentText, "browsepatient:", 14)==0)
 		{
 		OperatorConsole.printf("Browse patient: %s\n", SilentText+14);
+		return;
 		}
 
-	else if (memcmp(SilentText, "regenfile:", 10)==0)
+	if (memcmp(SilentText, "regenfile:", 10)==0)
+		{
 		RegenFile(SilentText+10);
-
-	else if (memcmp(SilentText, "addimagefile:", 13)==0)
+		return;
+		}
+		
+	if (memcmp(SilentText, "addimagefile:", 13)==0)
 		{
 		p = CommaInFilenameWorkAround(SilentText);
 		int rc = 0;
@@ -21737,9 +21831,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			rc=!AddImageFile(SilentText+13, p, &PDU);
 		sprintf(Response, "%d", rc);
 		AddedFileFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "loadanddeletedir:", 17)==0)
+	if (memcmp(SilentText, "loadanddeletedir:", 17)==0)
 		{
 		Database DB;
 		if (!DB.Open ( DataSource, UserName, Password, DataHost ) )
@@ -21750,15 +21845,17 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		p = CommaInFilenameWorkAround(SilentText);
 		if (p) *p++ = 0;
 		LoadAndDeleteDir(SilentText+17, p, &PDU, Thread, NULL, &DB);
+		return;
 		}
 
-	else if (memcmp(SilentText, "modifypatid:", 12)==0 && p)
+	if (memcmp(SilentText, "modifypatid:", 12)==0 && p)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) ModifyPATIDofImageFile(p, SilentText+12, TRUE, NULL, &PDU);
+		return;
 		}
 
-	else if (memcmp(SilentText, "modifyimage:", 12)==0 && p)
+	if (memcmp(SilentText, "modifyimage:", 12)==0 && p)
 		{
 		if (p) 
 		{ *p++=0;				// points after 1st comma
@@ -21778,9 +21875,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			  ModifyImageFile(SilentText+12, p, &PDU, TRUE);
 			  }
 		}
+		return;
 		}
 
-	else if (memcmp(SilentText, "modifystudy:", 12)==0)
+	if (memcmp(SilentText, "modifystudy:", 12)==0)
 		{
 		if (p) 					// study
 		{ *p++=0;				// points after 1st comma
@@ -21791,9 +21889,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		}
 
 		ModifyData(SilentText+12, p, NULL, NULL, q, &PDU, TRUE, Thread);
+		return;
 		}
 
-	else if (memcmp(SilentText, "modifyseries:", 13)==0)
+	if (memcmp(SilentText, "modifyseries:", 13)==0)
 		{
 		if (p) 					// study
 		{ *p++=0;				// points after 1st comma
@@ -21804,9 +21903,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		}
 
 		ModifyData(SilentText+13, NULL, p, NULL, q, &PDU, TRUE, Thread);
+		return;
 		}
 
-	else if (memcmp(SilentText, "modifier:", 9)==0)
+	if (memcmp(SilentText, "modifier:", 9)==0)
 		{
 		char *r=NULL, *r2=NULL, *r3=NULL;
 		if (p) 					// study
@@ -21829,9 +21929,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		}
 
 		ModifyData(SilentText+9, p, q, r, r3, &PDU, atoi(r2), Thread);
+		return;
 		}
 
-	else if (memcmp(SilentText, "anonymize:", 10)==0 && p)
+	if (memcmp(SilentText, "anonymize:", 10)==0 && p)
 		{
 		*p++=0;				// points after 1st comma
 
@@ -21860,15 +21961,22 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		  "set 0009,1200 to \"\";";
 		  ModifyPATIDofImageFile(p, SilentText+10, TRUE, anonscript, &PDU);
 		}
+		return;
 		}
 
-	else if (memcmp(SilentText, "mergeseriesfile:", 16)==0)
+	if (memcmp(SilentText, "mergeseriesfile:", 16)==0)
+		{
 		MergeUIDofImageFile(SilentText+16, TRUE, "SeriesUID", "", NULL, &PDU);
+		return;
+		}
 
-	else if (memcmp(SilentText, "mergestudyfile:", 15)==0)
+	if (memcmp(SilentText, "mergestudyfile:", 15)==0)
+		{
 		MergeUIDofImageFile(SilentText+15, TRUE, "StudyUID", "", NULL, &PDU);
+		return;
+		}
 
-	else if (memcmp(SilentText, "mergeseries:", 12)==0)
+	if (memcmp(SilentText, "mergeseries:", 12)==0)
 		{
 		char temp[128];
 		int i, n=1, L;
@@ -21886,9 +21994,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 				}
 			}
 		if (uids[0][0]) MergeUIDs(uids, n, "SeriesUID", temp);
+		return;
 		}
 
-	else if (memcmp(SilentText, "mergestudy:", 11)==0)
+	if (memcmp(SilentText, "mergestudy:", 11)==0)
 		{
 		char temp[128];
 		int i, n=1, L;
@@ -21907,36 +22016,49 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			}
 
 		if (uids[0][0]) MergeUIDs(uids, n, "StudyUID", temp);
+		return;
 		}
 
-	else if (memcmp(SilentText, "initializetables:", 17)==0)
+	if (memcmp(SilentText, "initializetables:", 17)==0)
+		{
 		InitializeTables (atoi(SilentText+17));
+		return;
+		}
 
-	else if (memcmp(SilentText, "regen:", 6)==0)
+	if (memcmp(SilentText, "regen:", 6)==0)
+		{
 		Regen();
+		return;
+		}
 
-	else if (memcmp(SilentText, "regendevice:", 12)==0)
+	if (memcmp(SilentText, "regendevice:", 12)==0)
+		{
 		Regen(SilentText+12, FALSE);
+		return;
+		}
 
-	else if (memcmp(SilentText, "regendir:", 9)==0)
+	if (memcmp(SilentText, "regendir:", 9)==0)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		Regen(SilentText+9, FALSE, p);
+		return;
 		}
 
-	else if (memcmp(SilentText, "makespace:", 10)==0)
+	if (memcmp(SilentText, "makespace:", 10)==0)
 		{
 		if (LargestFreeMAG()<(unsigned int)atoi(SilentText+10))
 			PanicKillOff((unsigned int)atoi(SilentText+10));
+		return;
 		}
 
-	else if (memcmp(SilentText, "selectlruforarchival:", 21)==0 && p)
+	if (memcmp(SilentText, "selectlruforarchival:", 21)==0 && p)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) SelectLRUForArchival(p, atoi(SilentText+21), &PDU);
+		return;
 		}
 
-	else if (memcmp(SilentText, "selectseriestomove:", 19)==0 && p)
+	if (memcmp(SilentText, "selectseriestomove:", 19)==0 && p)
 		{
 		if (p) 
 		  { *p++=0;				// points after 1st comma
@@ -21944,61 +22066,90 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		    if (q) *q++=0;			// points after 2nd comma
 		  }
 		if (p && q) SelectSeriesForArchival(SilentText+19, atoi(p), atoi(q));
+		return;
 		}
 
-	else if (memcmp(SilentText, "preparebunchforburning:", 23)==0 && p)
+	if (memcmp(SilentText, "preparebunchforburning:", 23)==0 && p)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) PrepareBunchForBurning(p, SilentText+23);
+		return;
 		}
 
-	else if (memcmp(SilentText, "movedatatodevice:", 17)==0 && p)
+	if (memcmp(SilentText, "movedatatodevice:", 17)==0 && p)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) MoveDataToDevice(p, SilentText+17);
+		return;
 		}
 
-	else if (memcmp(SilentText, "moveseriestodevice:", 19)==0 && p)
+	if (memcmp(SilentText, "moveseriestodevice:", 19)==0 && p)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) MoveSeriesToDevice(p, SilentText+19);
+		return;
 		}
 
-	else if (memcmp(SilentText, "restoremagflags:", 16)==0)
+	if (memcmp(SilentText, "restoremagflags:", 16)==0)
+		{
 		RestoreMAGFlags();
+		return;
+		}
 
-	else if (memcmp(SilentText, "comparebunchafterburning:", 25)==0)
+	if (memcmp(SilentText, "comparebunchafterburning:", 25)==0)
+		{
 		CompareBunchAfterBurning(SilentText+25);
+		return;
+		}
 
-	else if (memcmp(SilentText, "verifymirrordisk:", 17)==0)
+	if (memcmp(SilentText, "verifymirrordisk:", 17)==0)
+		{
 		VerifyMirrorDisk(SilentText+17);
-
-	else if (memcmp(SilentText, "testimages:", 11)==0)
+		return;
+		}
+		
+	if (memcmp(SilentText, "testimages:", 11)==0)
+		{
 		TestImages(SilentText+11);
+		return;
+		}
 
-	else if (memcmp(SilentText, "deletebunchafterburning:", 24)==0)
+	if (memcmp(SilentText, "deletebunchafterburning:", 24)==0)
+		{
 		DeleteBunchAfterBurning(SilentText+24);
+		return;
+		}
 			
-	else if (memcmp(SilentText, "renamedevice:", 13)==0 && p)
+	if (memcmp(SilentText, "renamedevice:", 13)==0 && p)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) RenameDevice(SilentText+13, p);
+		return;
 		}
 
-	else if (memcmp(SilentText, "testcompress:", 13)==0)
+	if (memcmp(SilentText, "testcompress:", 13)==0)
+		{
 #ifdef HAVE_J2K
 		TestCompress(SilentText+13, "unasn1n2n3n4j1j2j3j4j5j6jkjlk1k2k4k8", &PDU);
 #else
 		TestCompress(SilentText+13, "unasn1n2n3n4j1j2j3j4j5j6k1k2k4k8", &PDU);
 #endif
+		return;
+		}
 
-	else if (memcmp(SilentText, "debuglevel:", 11)==0)
+	if (memcmp(SilentText, "debuglevel:", 11)==0)
+		{
 		DebugVRs = DebugLevel = atoi(SilentText+11);
+		return;
+		}
 
-	else if (memcmp(SilentText, "testmode:", 9)==0)
+	if (memcmp(SilentText, "testmode:", 9)==0)
+		{
 		strcpy(TestMode, SilentText+9);
+		return;
+		}
 
-	else if (memcmp(SilentText, "debuglog_on:", 12)==0)
+	if (memcmp(SilentText, "debuglog_on:", 12)==0)
 		{
 		if (SilentText[12]>='0' && SilentText[12]<='9')
 			{
@@ -22030,9 +22181,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			SystemDebug.AddTimeStamps(1);
 			StartZipThread();
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "log_on:", 7)==0)
+	if (memcmp(SilentText, "log_on:", 7)==0)
 		{
 		if (SilentText[7]>='0' && SilentText[7]<='9')
 			{
@@ -22058,24 +22210,27 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			OperatorConsole.AddTimeStamps(1);
 			StartZipThread();
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "read_amap:", 10)==0)
+	if (memcmp(SilentText, "read_amap:", 10)==0)
 		{
 		CloseACRNemaAddressArray();
 		if(!InitACRNemaAddressArray())
 			{
 			OperatorConsole.printf("***Error loading acr-nema map file:%s\n",ACRNEMAMAP);
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "read_ini:", 9)==0)
+	if (memcmp(SilentText, "read_ini:", 9)==0)
 		{
 		ConfigDgate();
 		ConfigMicroPACS();
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_ini:", 8)==0)
+	if (memcmp(SilentText, "get_ini:", 8)==0)
 		{
 		char ps[]="%s";
 		FILE *f, *g;
@@ -22089,9 +22244,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			fprintf(g, p, line);
 		fclose(f);
 		fclose(g);
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_param:", 10)==0)
+	if (memcmp(SilentText, "get_param:", 10)==0)
 		{
 		char ps[] = "%s";
 		char szRootSC[64], Parameter[512];
@@ -22103,9 +22259,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 				sprintf(Response, p, Parameter);
 			}
 
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_ini_param:", 14)==0)
+	if (memcmp(SilentText, "get_ini_param:", 14)==0)
 		{
 		char ps[] = "%s";
 		char szRootSC[64], Parameter[512];
@@ -22117,9 +22274,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 				sprintf(Response, p, Parameter);
 			}
 
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_ini_num:", 12)==0)
+	if (memcmp(SilentText, "get_ini_num:", 12)==0)
 		{
 		char ps[] = "%s";
 //					char szRootSC[64], Parameter[512];
@@ -22138,9 +22296,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			i++;
 			}
 		fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "put_param:", 10)==0)
+	if (memcmp(SilentText, "put_param:", 10)==0)
 		{
 		FILE *f, *g;
 		char line[512];
@@ -22188,9 +22347,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		unlink(ConfigFile);
 		rename(newConfigFile, ConfigFile);
 		FlushPrivateProfileStringCache();
+		return;
 		}
 
-	else if (memcmp(SilentText, "delete_param:", 13)==0)
+	if (memcmp(SilentText, "delete_param:", 13)==0)
 		{
 		FILE *f, *g;
 		char line[512];
@@ -22224,9 +22384,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		unlink(ConfigFile);
 		rename(newConfigFile, ConfigFile);
 		FlushPrivateProfileStringCache();
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_freestore:", 14)==0)
+	if (memcmp(SilentText, "get_freestore:", 14)==0)
 		{
 		char pd[] = "%d";
 		int r = -1;
@@ -22239,9 +22400,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (memicmp("MIRROR", SilentText+14, 6)==0) 
 			r = CheckFreeStoreOnMIRRORDevice(atoi(SilentText+20));
 		sprintf(Response, p, r);
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_amap:", 9)==0)
+	if (memcmp(SilentText, "get_amap:", 9)==0)
 		{
 		char pq[] = "%-17s %-30s %-10s %-16s";
 		if (p) *p++=0;				// points after 1st comma
@@ -22254,9 +22416,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 					     AAPtr->Name, AAPtr->IP, AAPtr->Port, AAPtr->Compress,
 					     AAPtr->Name, AAPtr->IP, AAPtr->Port, AAPtr->Compress);
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_amaps:", 10)==0)
+	if (memcmp(SilentText, "get_amaps:", 10)==0)
 		{
 		char pq[] = "%-17s %-30s %-10s %-16s\n";
 		FILE *g;
@@ -22273,9 +22436,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 				      AAPtr->Name, AAPtr->IP, AAPtr->Port, AAPtr->Compress);
 			}
 		fclose(g);
+		return;
 		}
 
-	else if (memcmp(SilentText, "write_amap:", 11)==0)
+	if (memcmp(SilentText, "write_amap:", 11)==0)
 		{
 		char pq[]="%-17s %-30s %-10s %-16s\n";
 		unsigned int r = 0;
@@ -22320,9 +22484,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			r++;
 			}
 		fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "put_amap:", 9)==0)
+	if (memcmp(SilentText, "put_amap:", 9)==0)
 		{
 		int i, n=1, L;
 		char *items[5];
@@ -22361,9 +22526,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (items[2]) strcpy(AAPtr->IP,       items[2]);
 		if (items[3]) strcpy(AAPtr->Port,     items[3]);
 		if (items[4]) strcpy(AAPtr->Compress, items[4]);				
+		return;
 		}
 
-	else if (memcmp(SilentText, "delete_amap:", 12)==0)
+	if (memcmp(SilentText, "delete_amap:", 12)==0)
 		{
 		ACRNemaAddress	*AAPtr;
 
@@ -22374,9 +22540,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			delete AAPtr;
 			ACRNemaAddressArray.RemoveAt(r);
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_sqldef:", 11)==0)
+	if (memcmp(SilentText, "get_sqldef:", 11)==0)
 		{
 		char pq[] = "0x%4.4x, 0x%4.4x %20s %4d %10s %12s";
 		int r=0;
@@ -22398,9 +22565,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			if (DBE[r].Group)
 				sprintf(Response, q, DBE[r].Group, DBE[r].Element, DBE[r].SQLColumn,
 				DBE[r].SQLLength, SQLTypeSymName(DBE[r].SQLType), DICOMTypeSymName(DBE[r].DICOMType));
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_sop:", 8)==0)
+	if (memcmp(SilentText, "get_sop:", 8)==0)
 		{
 		char ps2[]="%s %s";
 		if (p) *p++=0;				// points after 1st comma
@@ -22408,9 +22576,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (p==NULL) p = ps2;
 		if (r<PDU.SOPUIDListCount)
 			sprintf(Response, p, PDU.SOPUIDList[r], PDU.SOPUIDListNames[r]);
+		return;
 		}
 
-	else if (memcmp(SilentText, "put_sop:", 8)==0 ||
+	if (memcmp(SilentText, "put_sop:", 8)==0 ||
 		 memcmp(SilentText, "put_transfer:", 13)==0 ||
 		 memcmp(SilentText, "put_localae:", 12)==0 ||
 		 memcmp(SilentText, "put_remoteae:", 13)==0 ||
@@ -22502,9 +22671,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		for (r=0; r<PDU.TransferUIDListCount; r++)
 			fprintf(f, "%-42s %-44s transfer\n", PDU.TransferUIDListNames[r], PDU.TransferUIDList[r]);
 		fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "delete_sop:", 11)==0 ||
+	if (memcmp(SilentText, "delete_sop:", 11)==0 ||
 		 memcmp(SilentText, "delete_transfer:", 16)==0 ||
 		 memcmp(SilentText, "delete_localae:", 15)==0 ||
 		 memcmp(SilentText, "delete_remoteae:", 16)==0 ||
@@ -22590,9 +22760,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		for (r=0; r<PDU.TransferUIDListCount; r++)
 			fprintf(f, "%-42s %-44s transfer\n", PDU.TransferUIDListNames[r], PDU.TransferUIDList[r]);
 		fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_transfer:", 13)==0)
+	if (memcmp(SilentText, "get_transfer:", 13)==0)
 		{
 		char ps2[]="%s %s";
 		if (p) *p++=0;				// points after 1st comma
@@ -22600,9 +22771,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (p==NULL) p = ps2;
 		if (r<PDU.TransferUIDListCount)
 			sprintf(Response, p, PDU.TransferUIDList[r], PDU.TransferUIDListNames[r]);
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_application:", 16)==0)
+	if (memcmp(SilentText, "get_application:", 16)==0)
 		{
 		char ps2[]="%s %s";
 		if (p) *p++=0;				// points after 1st comma
@@ -22610,9 +22782,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (p==NULL) p = ps2;
 		if (r<PDU.ApplicationUIDListCount)
 			sprintf(Response, p, PDU.ApplicationUIDList[r], PDU.ApplicationUIDListNames[r]);
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_localae:", 12)==0)
+	if (memcmp(SilentText, "get_localae:", 12)==0)
 		{
 		char ps2[]="%s %s";
 		if (p) *p++=0;				// points after 1st comma
@@ -22620,9 +22793,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (p==NULL) p = ps2;
 		if (r<PDU.LocalAEListCount)
 			sprintf(Response, p, PDU.LocalAEList[r], PDU.LocalAEListNames[r]);
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_remoteae:", 13)==0)
+	if (memcmp(SilentText, "get_remoteae:", 13)==0)
 		{
 		char ps2[]="%s %s";
 		if (p) *p++=0;				// points after 1st comma
@@ -22630,9 +22804,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (p==NULL) p = ps2;
 		if (r<PDU.RemoteAEListCount)
 			sprintf(Response, p, PDU.RemoteAEList[r], PDU.RemoteAEListNames[r]);
+		return;
 		}
 
-	else if (memcmp(SilentText, "get_dic:", 8)==0)
+	if (memcmp(SilentText, "get_dic:", 8)==0)
 		{
 		char ps3[]="%04x %04x %c%c %s";
 		if (p) *p++=0;				// points after 1st comma
@@ -22644,12 +22819,16 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			e = &(VRType.TypeCodes->Get(r));
 			sprintf(Response, p, VRType.TypeCodes->Get(r).Group, VRType.TypeCodes->Get(r).Element, VRType.TypeCodes->Get(r).TypeCode>>8, VRType.TypeCodes->Get(r).TypeCode&255, VRType.TypeCodes->Get(r).Description);
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "mk_binary_dic:", 14)==0)
+	if (memcmp(SilentText, "mk_binary_dic:", 14)==0)
+		{
 		MkBinaryRtc(DicomDict, SilentText+14, TRUE);
+		return;
+		}
 
-	else if (memcmp(SilentText, "dump_header:", 12)==0)
+	if (memcmp(SilentText, "dump_header:", 12)==0)
 		{ 
 		FILE *f;
 		if (p) *p++=0;				// points after 1st comma
@@ -22682,9 +22861,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		if (f) fclose(f);
 		if (pDDO) delete pDDO;
 		DumpHeaderFromGui++;
+		return;
 		}
 
-	else if (memcmp(SilentText, "display_status:", 15)==0)
+	if (memcmp(SilentText, "display_status:", 15)==0)
 		{ 
 		FILE *f;
 		p = SilentText+15;
@@ -22714,9 +22894,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			f = fopen(p, "wt");
 		StatusDisplay(f);
 		if (f) fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "status_string:", 14)==0)
+	if (memcmp(SilentText, "status_string:", 14)==0)
 		{ 
 		FILE *f;
 		p = SilentText+14;
@@ -22751,9 +22932,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			strcpy(SilentText, "text/plain");
 			}
 		if (f) fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "echo:", 5)==0)
+	if (memcmp(SilentText, "echo:", 5)==0)
 		{ 
 		FILE *f;
 		if (p) *p++=0;	// points after 1st comma (file)
@@ -22786,9 +22968,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		else
 			fprintf(f, "%s is DOWN", SilentText+5);
 		if (f) fclose(f);
+		return;
 		}
 
-	else if (memcmp(SilentText, "forward:", 8)==0)
+	if (memcmp(SilentText, "forward:", 8)==0)
 		{
 		if (p) 
 		{ *p++=0;				// points after 1st comma
@@ -22799,9 +22982,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		    ForwardFromGui++;
 		  }
 		}
+		return;
 		}
 
-	else if (memcmp(SilentText, "convert_to_gif:", 15)==0 || memcmp(SilentText, "convert_to_bmp:", 15)==0 || memcmp(SilentText, "convert_to_jpg:", 15)==0)
+	if (memcmp(SilentText, "convert_to_gif:", 15)==0 || memcmp(SilentText, "convert_to_bmp:", 15)==0 || memcmp(SilentText, "convert_to_jpg:", 15)==0)
 		{
 		int level, window;
 		unsigned int frame;
@@ -22908,9 +23092,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 				}
 			delete pDDO;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "convert_to_dicom:", 17)==0)
+	if (memcmp(SilentText, "convert_to_dicom:", 17)==0)
 		{
 		DICOMDataObject *pDDO;
 		if (p) 
@@ -22938,9 +23123,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			ImagesToDicomFromGui++;
 			delete pDDO;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "convert_to_json:", 16)==0)
+	if (memcmp(SilentText, "convert_to_json:", 16)==0)
 		{
 		char *r2=NULL;
 		DICOMDataObject *pDDO;
@@ -22975,9 +23161,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		        CallImportConverterN(NULL, pDDO, -1, NULL, NULL, NULL, NULL, &PDU, NULL, script2);
 			delete pDDO;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "uncompress:", 11)==0)
+	if (memcmp(SilentText, "uncompress:", 11)==0)
 		{
 		DICOMDataObject *pDDO;
 		if (p) 
@@ -22992,9 +23179,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			ImagesToDicomFromGui++;
 			delete pDDO;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "compress:", 9)==0)
+	if (memcmp(SilentText, "compress:", 9)==0)
 		{
 		DICOMDataObject *pDDO;
 		if (p) 
@@ -23012,9 +23200,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			ImagesToDicomFromGui++;
 			delete pDDO;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "extract_frames:", 15)==0)
+	if (memcmp(SilentText, "extract_frames:", 15)==0)
 		{
 		DICOMDataObject *pDDO;
 		if (p) 
@@ -23035,9 +23224,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			SaveDICOMDataObject(p, pDDO);
 			delete pDDO;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "wadorequest:", 12)==0 || memcmp(SilentText, "wadoparse:", 10)==0)
+	if (memcmp(SilentText, "wadorequest:", 12)==0 || memcmp(SilentText, "wadoparse:", 10)==0)
 		{
 		DICOMDataObject *pDDO;
 		char *begin = SilentText+12;
@@ -23341,9 +23531,10 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			delete pDDO;
 			if (r7) tempfile[0]=0;
 			}
+		return;
 		}
 
-	else if (memcmp(SilentText, "count_frames:", 13)==0)
+	if (memcmp(SilentText, "count_frames:", 13)==0)
 		{
 		DICOMDataObject *pDDO;
 		pDDO = LoadForGUI(SilentText+13);
@@ -23352,18 +23543,22 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			sprintf(Response, "%d", GetNumberOfFrames(pDDO));
 			delete pDDO;
 			}
+		return;
 		}
-	else if (memcmp(SilentText, "grabimagesfromserver:", 21)==0)
+
+	if (memcmp(SilentText, "grabimagesfromserver:", 21)==0)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) GrabImagesFromServer((unsigned char *)SilentText+21, p, (char *)MYACRNEMA, Thread);
 		GrabFromGui++;
+		return;
 		}
-	else if (memcmp(SilentText, "prefetch:", 9)==0)
+	if (memcmp(SilentText, "prefetch:", 9)==0)
 		{
 		PrefetchPatientData((char *)SilentText+9, 0, Thread);
+		return;
 		}
-	else if (memcmp(SilentText, "loadhl7:", 8)==0)
+	if (memcmp(SilentText, "loadhl7:", 8)==0)
 		{
 		unsigned int len = DFileSize(SilentText+8);
 		if (len)
@@ -23377,17 +23572,20 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			ProcessHL7Data(p2);
 			free(p2);
 			}
+		return;
 		}
-	else if (memcmp(SilentText, "quit:", 5)==0)
+	if (memcmp(SilentText, "quit:", 5)==0)
 		{
 		exit(0);
+		return;
 		}
-	else if (memcmp(SilentText, "safequit:", 9)==0)
+	if (memcmp(SilentText, "safequit:", 9)==0)
 		{
 		while (OpenThreadCount>1) Sleep(1000);
 		exit(0);
+		return;
 		}
-	else if (memcmp(SilentText, "checklargestmalloc:", 19)==0)
+	if (memcmp(SilentText, "checklargestmalloc:", 19)==0)
 		{
 		// mvh: on 32 bits system the malloc will fail before size_t(32 bits) overflows
 		// on 64 bits the test will happily continue to 8 GB and further
@@ -23400,27 +23598,31 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 				break;
 				}
 			}
+		return;
 		}
-	else if (memcmp(SilentText, "genuid:", 7)==0)
+	if (memcmp(SilentText, "genuid:", 7)==0)
 		{
 		char uid[70];
 		GenUID(uid);
 		sprintf(Response, "%s", uid);
+		return;
 		}
-	else if (memcmp(SilentText, "changeuid:", 10)==0)
+	if (memcmp(SilentText, "changeuid:", 10)==0)
 		{
 		char uid[70];
 		ChangeUID(SilentText+10, "--changeuid", uid, NULL, NULL);
 		sprintf(Response, "%s", uid);
+		return;
 		}
-	else if (memcmp(SilentText, "changeuidback:", 14)==0)
+	if (memcmp(SilentText, "changeuidback:", 14)==0)
 		{
 		char uid[70];
 		ChangeUIDBack(SilentText+14, uid, NULL, NULL, NULL);
 		sprintf(Response, "%s", uid);
+		return;
 		}
 
-/*	else if (memcmp(SilentText, "scheduletransfer:", 17)==0)
+/*	if (memcmp(SilentText, "scheduletransfer:", 17)==0)
 		{
 		char scr[] = "call submit.cq";		// default script
 		char *r2=NULL, *r3=NULL, *r4=NULL;
@@ -23465,31 +23667,36 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		* ////
 		}
 		*/
-	else if (memcmp(SilentText, "checksum:", 9)==0)
+	if (memcmp(SilentText, "checksum:", 9)==0)
 		{
 		sprintf(Response, "%u", ComputeCRC(SilentText+9, strlen(SilentText+9)));
+		return;
 		}
-	else if (memcmp(SilentText, "attachrtplantortstruct:", 23)==0)
+	if (memcmp(SilentText, "attachrtplantortstruct:", 23)==0)
 		{
 		if (p) *p++=0;				// points after 1st comma
 		if (p) AttachRTPLANToRTSTRUCT(SilentText+23, p, &PDU);
+		return;
 		}
-	else if (memcmp(SilentText, "attachanytopatient:", 19)==0)
+	if (memcmp(SilentText, "attachanytopatient:", 19)==0)
 		{
 		if (p) *p++=0;
 		if (p) AttachAnyToPatient(SilentText+19, p, &PDU);
+		return;
 		}
-	else if (memcmp(SilentText, "attachanytostudy:", 17)==0)
+	if (memcmp(SilentText, "attachanytostudy:", 17)==0)
 		{
 		if (p) *p++=0;
 		if (p) AttachAnyToStudy(SilentText+17, p, &PDU);
+		return;
 		}
-	else if (memcmp(SilentText, "attachanytoseries:", 18)==0)
+	if (memcmp(SilentText, "attachanytoseries:", 18)==0)
 		{
 		if (p) *p++=0;
 		if (p) AttachAnyToSeries(SilentText+18, p, &PDU);
+		return;
 		}
-	else if (memcmp(SilentText, "attachfile:", 11)==0)
+	if (memcmp(SilentText, "attachfile:", 11)==0)
 		{
 		char rFilename[1024];
 		if (p) *p++=0;
@@ -23510,8 +23717,9 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			{
 			if (p) AttachFile(SilentText+11, p, rFilename, &PDU);
 			}
+		return;
 		}
-	else if (memcmp(SilentText, "submit:", 7)==0)
+	if (memcmp(SilentText, "submit:", 7)==0)
 		{
 		char scr[] = "call submit.cq";		// default script
 		char *r2=NULL, *r3=NULL, *r4=NULL;
@@ -23539,8 +23747,9 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		}
 		// DcmSubmitData(SilentText+7, p, q, r1, "call submit.cq", "sftp", r2, 22, r3);
 		if (r2) DcmSubmitData(SilentText+7, p, q, r1, r4, "sftp", r2, 22, r3, Thread);
+		return;
 		}
-	else if (memcmp(SilentText, "submit2:", 7)==0)
+	if (memcmp(SilentText, "submit2:", 7)==0)
 		{
 		char scr[] = "call submit.cq";		// default script
 		char *r2=NULL, *r3=NULL, *r4=NULL;
@@ -23567,8 +23776,9 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		  }
 		}
 		if (r2) DcmSubmitData(SilentText+8, p, q, r1, r4, "other", r2, 22, r3, Thread);
+		return;
 		}
-	else if (memcmp(SilentText, "export:", 7)==0)
+	if (memcmp(SilentText, "export:", 7)==0)
 		{
 		char *r2=NULL, *r3=NULL;
 		if (p) 					// study
@@ -23604,8 +23814,9 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		}
 
 		if (r2) DcmSubmitData(SilentText+7, p, q, r1, r3, "zip", r2, 0, NULL, Thread);
+		return;
 		}
-	else if (memcmp(SilentText, "move:", 5)==0)
+	if (memcmp(SilentText, "move:", 5)==0)
 		{
 		char *empty="";
 		char *r2=empty, *r3=empty;
@@ -23623,6 +23834,8 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 			r3 = strchr(r2, ',');		// sop
 			if (r3) 
 			{ *r3++=0;                      // points after 5th comma
+    	                  u1 = strchr(r3, ',');
+		          if (u1) *u1++=0;		// points after optional 6th comma
 			}
 		        else r3=empty;
 		      }
@@ -23632,13 +23845,14 @@ void ServerTask(char *SilentText, ExtendedPDU_Service &PDU, DICOMCommandObject &
 		  }
 		}
 		if (q)
-		{ if (DcmMove(q, SilentText+5, p, r1, r2, "", "", "", r3, "", "", 10, "", Thread))
+		{ if (DcmMove(q, SilentText+5, p, r1, r2, "", "", "", r3, "", "", 10, u1?u1:blank, Thread))
 		    sprintf(Response, "1 Move failed from %s to %s", SilentText+5, p);
 		  else
 		  { MoveSeriesFromGui++;
 		    strcpy(Response, "0");
 		  }
 		}
+		return;
 		}
 	}
 	
