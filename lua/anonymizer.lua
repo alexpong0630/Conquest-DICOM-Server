@@ -40,8 +40,9 @@
 -- 20250911     mvh     Fix missing newuids if logmodified==false
 -- 20250911     mvh     Split functions of and pass all config and control as parameters
 -- 20250911     mvh     Added dateoffset to anonymizer; write anonymization profile sequence; config is not optional
+-- 20260107	mvh	Moved reading of alternative configuration to wrapper
 
-local scriptversion = "1.4; date 20250911"
+local scriptversion = "1.4; date 20260107"
 
 function CRC32(val)
   return crc(tostring(val))
@@ -75,16 +76,6 @@ function anonymize(config, newid, newname, stage, dateoffset)
   local DirSep      = '/'
   if string.find(Global.BaseDir, '\\') then DirSep = '\\' end
 
-  -- optionally read stage.cfg to change anonymisation settings
-  local g=io.open(string.gsub(Global.BaseDir..stage..'.cfg', '#', ''), 'r')
-  if g then
-    g:close()
-    dofile(Global.BaseDir..string.gsub(stage, '#', '')..'.cfg')
-    print("Read configuration file for stage: ", stage, "\n") 
-  else
-    print("Anomymisation stage              : ", stage, "\n") 
-  end
-  
   if string.find(stage, '#') then config.reversible=false end -- uid generation by MD5 is not reversible
   
   -- Log file handling (trailing directory separator required for mkdir)

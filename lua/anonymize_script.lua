@@ -40,6 +40,7 @@
 -- 20250911     mvh     Fix missing newuids if logmodified==false
 -- 20250911     mvh     Split functions of and pass all config and control as parameters
 -- 20250911     mvh     Added dateoffset to command_line or tag "9999,1235"
+-- 20260107	mvh	Moved reading of alternative configuration to here
 
 -- =============================================================================
 
@@ -150,6 +151,7 @@ if Data["9999,1235"] then
   Data["9999,1235"]=nil
 end
 
+-- default config
 config = {}
 config.reversible  = reversible
 config.MaintainAge = MaintainAge
@@ -164,5 +166,15 @@ config.TagsToKeep  = TagsToKeep
 config.TagsToRemove= TagsToRemove
 config.TagsToModify= TagsToModify
 config.TagsToPrint = TagsToPrint
+
+-- optionally read *stage*.cfg to change anonymisation settings
+local g=io.open(string.gsub(Global.BaseDir..stage..'.cfg', '#', ''), 'r')
+if g then
+  g:close()
+  dofile(Global.BaseDir..string.gsub(stage, '#', '')..'.cfg')
+  print("Read configuration file for stage: ", stage, "\n") 
+else
+  print("Anomymisation stage              : ", stage, "\n") 
+end
 
 anonymize(config, newid, newname, stage, dateoffset)
