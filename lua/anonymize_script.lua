@@ -41,6 +41,8 @@
 -- 20250911     mvh     Split functions of and pass all config and control as parameters
 -- 20250911     mvh     Added dateoffset to command_line or tag "9999,1235"
 -- 20260107	mvh	Moved reading of alternative configuration to here
+-- 20260109	mvh	Added TagsToSanitise
+-- 20260110	mvh	Made config local
 
 -- =============================================================================
 
@@ -73,7 +75,7 @@
 
 -- =============================================================================
 
-local scriptversion = "1.4; date 20250911"
+local scriptversion = "1.5; date 20260110"
 
 local DirSep      = '/'
 if string.find(Global.BaseDir, '\\') then DirSep = '\\' end
@@ -112,6 +114,10 @@ TagsToModify = {
 -- alternative: only these entries are kept (if table loaded from configuration file)
 -- e.g. TagsToKeep = {"PatientID", "SOPInstanceUID", "0008", "0010", "0028", "7FE0"}
 TagsToKeep = {}
+
+-- entries that are modified to remove dates and patientIDs
+TagsToSanitise = {
+"SeriesDescription", "StudyDescription"}
 
 MaintainAge = false
 MaintainSex = false
@@ -152,7 +158,7 @@ if Data["9999,1235"] then
 end
 
 -- default config
-config = {}
+local config = {}
 config.reversible  = reversible
 config.MaintainAge = MaintainAge
 config.MaintainSex = MaintainSex
@@ -166,12 +172,13 @@ config.TagsToKeep  = TagsToKeep
 config.TagsToRemove= TagsToRemove
 config.TagsToModify= TagsToModify
 config.TagsToPrint = TagsToPrint
+config.TagsToSanitise= TagsToSanitise
 
 -- optionally read *stage*.cfg to change anonymisation settings
 local g=io.open(string.gsub(Global.BaseDir..stage..'.cfg', '#', ''), 'r')
 if g then
   g:close()
-  dofile(Global.BaseDir..string.gsub(stage, '#', '')..'.cfg')
+  config = dofile(Global.BaseDir..string.gsub(stage, '#', '')..'.cfg')
   print("Read configuration file for stage: ", stage, "\n") 
 else
   print("Anomymisation stage              : ", stage, "\n") 

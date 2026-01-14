@@ -41,8 +41,10 @@
 -- 20250911     mvh     Split functions of and pass all config and control as parameters
 -- 20250911     mvh     Added dateoffset to anonymizer; write anonymization profile sequence; config is not optional
 -- 20260107	mvh	Moved reading of alternative configuration to wrapper
+-- 20260109	mvh	Added TagsToSanitise, version to 1.5
+-- 20260114	mvh	Also remove dates as dd-mm-yyyy, yyyy-mm-dd, dd/mm/yyyy, yyyy/mm/dd
 
-local scriptversion = "1.4; date 20260107"
+local scriptversion = "1.5; date 20260114"
 
 function CRC32(val)
   return crc(tostring(val))
@@ -97,7 +99,7 @@ function anonymize(config, newid, newname, stage, dateoffset)
   f:write("Processing at                    : ", os.date(), "\n")
   
   -- Check dictionary to avoid crash on undefined tags
-  for _, val2 in ipairs({config.TagsToModify, config.TagsToPrint, config.TagsToEmpty, config.TagsToRemove, config.TagsToKeep}) do
+  for _, val2 in ipairs({config.TagsToModify, config.TagsToPrint, config.TagsToEmpty, config.TagsToRemove, config.TagsToKeep, config.TagsToSanitise}) do
     for _, val in ipairs(val2) do
       if tonumber(val, 16)==nil and dictionary(val)==nil and string.sub(val,1,1)~='0' then
         f:write("*** Error: '", val, "' not in dictionary - object will not be processed\n")
@@ -155,6 +157,8 @@ function anonymize(config, newid, newname, stage, dateoffset)
       f:write('Anonymized PatientID to: ', Data.PatientID, "\n")
     end
   end
+
+  local oldName = Data.PatientName
   if Data.PatientName~='' then
     if config.reversible==true then
       Data.PatientName = changeuid(Data.PatientName, newname, stage, 'PatientName')
@@ -165,6 +169,7 @@ function anonymize(config, newid, newname, stage, dateoffset)
       f:write('Anonymized PatientName to: ', Data.PatientName, "\n")
     end
   end
+
   if Data.PatientBirthDate and Data.PatientBirthDate~='' then
     local org = Data.PatientBirthDate
     if config.MaintainAge==true then
@@ -194,6 +199,39 @@ function anonymize(config, newid, newname, stage, dateoffset)
   if config.logmodified then
     for i=1, 4 do
       f:write(config.TagsToPrint[i], ': ', tostring(Data[config.TagsToPrint[i]]), "\n")
+    end
+  end
+  
+  -- process TagsToSanitise, get rid of ID, name, and optional dates
+  if config.TagsToSanitise[1] then
+    local sans = {
+    oldID, '_ID_', 
+    oldName, '_Name_', 
+    '19%d%d%d%d%d%d', '_Date_', 
+    '20%d%d%d%d%d%d', '_Date_', 
+    '21%d%d%d%d%d%d', '_Date_',
+    '%d%d-%d%d-19%d%d', '_Date_', 
+    '%d%d-%d%d-20%d%d', '_Date_', 
+    '%d%d-%d%d-21%d%d', '_Date_', 
+    '19%d%d-%d%d-%d%d', '_Date_', 
+    '20%d%d-%d%d-%d%d', '_Date_', 
+    '21%d%d-%d%d-%d%d', '_Date_',
+    '%d%d/%d%d/19%d%d', '_Date_', 
+    '%d%d/%d%d/20%d%d', '_Date_', 
+    '%d%d/%d%d/21%d%d', '_Date_', 
+    '19%d%d/%d%d/%d%d', '_Date_', 
+    '20%d%d/%d%d/%d%d', '_Date_', 
+    '21%d%d/%d%d/%d%d', '_Date_',
+    }
+    for _, val in ipairs(config.TagsToSanitise) do
+      local s=Data[val]
+      if s then
+        for i=1, #sans, 2 do
+          s=string.gsub(s, sans[i], sans[i+1])
+        end
+        Data[val]=s
+        f:write('Sanitised: ' .. val, "\n")
+      end
     end
   end
   
