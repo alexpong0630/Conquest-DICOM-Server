@@ -1229,6 +1229,7 @@ Spectra0013 Wed, 5 Feb 2014 16:57:49 -0200: Fix cppcheck bugs #8 e #9
 20260107        mvh	Added bitwise lua functions lshift,rshift,band,bxor,bnot; changed nesting in servertask to avoid compiler limit
 20260107        mvh	Also show text of 2 and 4 header elements
 20260114        mvh	Date offset crashed and now ignores dates before 1971 (birthdates must be dealt with differently)
+20260115        mvh	Also check time>-offset
 
 ENDOFUPDATEHISTORY
 */
@@ -3306,7 +3307,7 @@ OffsetDatesInDICOMObject(DICOMObject *DO, const char *Exceptions, int Offset, Da
 						tmbuf.tm_year -= 1900;
 		
 						time_t t = mktime(&tmbuf);
-						if (t>0) {
+						if (t>0 && t>-24*3600*Offset) {
 							t += 24*3600*Offset;
 							localtime_r(&t, &tmbuf);
 		
