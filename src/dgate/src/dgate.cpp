@@ -1230,6 +1230,7 @@ Spectra0013 Wed, 5 Feb 2014 16:57:49 -0200: Fix cppcheck bugs #8 e #9
 20260107        mvh	Also show text of 2 and 4 header elements
 20260114        mvh	Date offset crashed and now ignores dates before 1971 (birthdates must be dealt with differently)
 20260115        mvh	Also check time>-offset
+20260119        mvh	Fixed check for processing zipped files, before fix would pass e.g. extension .7
 
 ENDOFUPDATEHISTORY
 */
@@ -3721,9 +3722,11 @@ AddImageFile(char *filename, char *NewPatid, ExtendedPDU_Service *PDU, Database	
 		}
 
 	char *p = strrchr(filename, '.');
+	char *q = p?(char *)strstr(".gz.GZ.zip.ZIP.tar.TAR.7z.7Z.", p):NULL;
+	int L=p?strlen(p):0;
 
 	// compressed file support using 7za.exe
-	if (p && strstr(".gz.GZ.zip.ZIP.tar.TAR.7z.7Z", p))
+	if (p && q && q[L]=='.')
 		{ 
 		char line[1000], dir[512];
 
