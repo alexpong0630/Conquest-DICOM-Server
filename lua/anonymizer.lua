@@ -43,8 +43,9 @@
 -- 20260107	mvh	Moved reading of alternative configuration to wrapper
 -- 20260109	mvh	Added TagsToSanitise, version to 1.5
 -- 20260114	mvh	Also remove dates as dd-mm-yyyy, yyyy-mm-dd, dd/mm/yyyy, yyyy/mm/dd
+-- 20260119	mvh	Escaped - in dd-mm-yyyy, yyyy-mm-dd sanitiser
 
-local scriptversion = "1.5; date 20260114"
+local scriptversion = "1.5; date 20260119"
 
 function CRC32(val)
   return crc(tostring(val))
@@ -210,12 +211,12 @@ function anonymize(config, newid, newname, stage, dateoffset)
     '19%d%d%d%d%d%d', '_Date_', 
     '20%d%d%d%d%d%d', '_Date_', 
     '21%d%d%d%d%d%d', '_Date_',
-    '%d%d-%d%d-19%d%d', '_Date_', 
-    '%d%d-%d%d-20%d%d', '_Date_', 
-    '%d%d-%d%d-21%d%d', '_Date_', 
-    '19%d%d-%d%d-%d%d', '_Date_', 
-    '20%d%d-%d%d-%d%d', '_Date_', 
-    '21%d%d-%d%d-%d%d', '_Date_',
+    '%d%d%-%d%d%-19%d%d', '_Date_', 
+    '%d%d%-%d%d%-20%d%d', '_Date_', 
+    '%d%d%-%d%d%-21%d%d', '_Date_', 
+    '19%d%d%-%d%d%-%d%d', '_Date_', 
+    '20%d%d%-%d%d%-%d%d', '_Date_', 
+    '21%d%d%-%d%d%-%d%d', '_Date_',
     '%d%d/%d%d/19%d%d', '_Date_', 
     '%d%d/%d%d/20%d%d', '_Date_', 
     '%d%d/%d%d/21%d%d', '_Date_', 
