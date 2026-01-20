@@ -40,6 +40,7 @@
 -- mvh 20240924 Reset request after quit to avoid failure to restart
 -- mvh 20240928 Export md5
 -- mvh 20250525 Export os if mode=service
+-- mvh 20260120 Fixed rare crash in line 193 (a == nil)
 
 -----------------------------------------------------
 
@@ -189,6 +190,7 @@ function ladleutil.parseQueryString(query_string)
 
 	while query_string:len()>0 do
 		local a,b = query_string:find('=')
+		a=a or 0
 		local c = nil
 		local index = query_string:sub( 0, a-1 )
 		b,c = query_string:find('&')
