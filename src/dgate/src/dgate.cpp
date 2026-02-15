@@ -1232,6 +1232,10 @@ Spectra0013 Wed, 5 Feb 2014 16:57:49 -0200: Fix cppcheck bugs #8 e #9
 20260115        mvh	Also check time>-offset
 20260119        mvh	Fixed check for processing zipped files, before fix would pass e.g. extension .7
 20260119        mvh	Fixed the forgotten other one
+20260215	mvh	Fix parsing and printing of tm_mon in new function OffsetDatesInDICOMObject; 
+			Fix 2x parsing of tm_mon in "now " clause in delayed forward etc; affects object selection by age from now
+			Fix 2x parsing of tm_mon in "age " clause in delayed forward etc; affects object selection by age from study
+			Fix printing  tm_mon in VirtualQueryCached; now disables caching relating to today for e.g., VirtualServerFor0 = AE,CACHESERIES
 
 ENDOFUPDATEHISTORY
 */
@@ -3307,13 +3311,14 @@ OffsetDatesInDICOMObject(DICOMObject *DO, const char *Exceptions, int Offset, Da
 					s[vr->Length]=0;
 					if (sscanf(s, "%04d%02d%02d", &tmbuf.tm_year, &tmbuf.tm_mon, &tmbuf.tm_mday)==3) {
 						tmbuf.tm_year -= 1900;
+						tmbuf.tm_mon  -= 1;
 		
 						time_t t = mktime(&tmbuf);
 						if (t>0 && t>-24*3600*Offset) {
 							t += 24*3600*Offset;
 							localtime_r(&t, &tmbuf);
 		
-							sprintf(NewDate, "%04d%02d%02d", tmbuf.tm_year+1900, tmbuf.tm_mon, tmbuf.tm_mday);
+							sprintf(NewDate, "%04d%02d%02d", tmbuf.tm_year+1900, tmbuf.tm_mon+1, tmbuf.tm_mday);
 							len = strlen(NewDate); if (len&1) { len++; NewDate[len-1]=' '; }
 							vr->ReAlloc(len);
 							memcpy(vr->Data, NewDate, len);
@@ -3337,12 +3342,13 @@ OffsetDatesInDICOMObject(DICOMObject *DO, const char *Exceptions, int Offset, Da
 					s[vr->Length]=0;
 					if (sscanf(s, "%04d%02d%02d", &tmbuf.tm_year, &tmbuf.tm_mon, &tmbuf.tm_mday)==3) {
 						tmbuf.tm_year -= 1900;
+						tmbuf.tm_mon  -= 1;
 		
 						time_t t = mktime(&tmbuf);
 						t += 24*3600*Offset;
 						localtime_r(&t, &tmbuf);
 		
-						sprintf(NewDate, "%04d%02d%02d", tmbuf.tm_year+1900, tmbuf.tm_mon, tmbuf.tm_mday);
+						sprintf(NewDate, "%04d%02d%02d", tmbuf.tm_year+1900, tmbuf.tm_mon+1, tmbuf.tm_mday);
 						memcpy(s, NewDate, 8);
 					
 						memcpy(vr->Data, s, vr->Length);
@@ -6167,7 +6173,7 @@ BOOL CallExportConverterN(char *pszFileName, int N, char *pszModality, char *psz
             localtime_r(&t1, &tmbuf1);
             localtime_r(&t2, &tmbuf2);
 
-	    sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon, tmbuf2.tm_mday);
+	    sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon+1, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon+1, tmbuf2.tm_mday);
 	    date = dat;
 
             p = strchr(p+4, ' '); 
@@ -6184,6 +6190,7 @@ BOOL CallExportConverterN(char *pszFileName, int N, char *pszModality, char *psz
             memset(&tmbuf1, 0, sizeof(tmbuf1));
 	    sscanf(dat, "%04d%02d%02d", &tmbuf1.tm_year, &tmbuf1.tm_mon, &tmbuf1.tm_mday);
             tmbuf1.tm_year -= 1900;
+	    tmbuf1.tm_mon  -= 1;
 
             time_t t = mktime(&tmbuf1);
 	    time_t t1 = t+24*3600*from;
@@ -6191,7 +6198,7 @@ BOOL CallExportConverterN(char *pszFileName, int N, char *pszModality, char *psz
             localtime_r(&t1, &tmbuf1);
             localtime_r(&t2, &tmbuf2);
 
-	    sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon, tmbuf2.tm_mday);
+	    sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon+1, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon+1, tmbuf2.tm_mday);
 	    date = dat;
 
             p = strchr(p+4, ' '); 
@@ -10808,7 +10815,7 @@ int CallImportConverterN(DICOMCommandObject *DCO, DICOMDataObject *DDO, int N, c
           localtime_r(&t1, &tmbuf1);
           localtime_r(&t2, &tmbuf2);
 
-	  sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon, tmbuf2.tm_mday);
+	  sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon+1, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon+1, tmbuf2.tm_mday);
 	  date = dat;
 
           p = strchr(p+4, ' '); 
@@ -10825,6 +10832,7 @@ int CallImportConverterN(DICOMCommandObject *DCO, DICOMDataObject *DDO, int N, c
           memset(&tmbuf1, 0, sizeof(tmbuf1));
 	  sscanf(dat, "%04d%02d%02d", &tmbuf1.tm_year, &tmbuf1.tm_mon, &tmbuf1.tm_mday);
           tmbuf1.tm_year -= 1900;
+	  tmbuf1.tm_mon  -= 1;
 
 	  time_t t = mktime(&tmbuf1);
 	  time_t t1 = t+24*3600*from;
@@ -10832,7 +10840,7 @@ int CallImportConverterN(DICOMCommandObject *DCO, DICOMDataObject *DDO, int N, c
           localtime_r(&t1, &tmbuf1);
           localtime_r(&t2, &tmbuf2);
 
-	  sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon, tmbuf2.tm_mday);
+	  sprintf(dat, "%04d%02d%02d-%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon+1, tmbuf1.tm_mday, tmbuf2.tm_year+1900, tmbuf2.tm_mon+1, tmbuf2.tm_mday);
 	  date = dat;
 
           p = strchr(p+4, ' '); 
@@ -15317,7 +15325,7 @@ int VirtualQueryCached(DICOMDataObject *DDO, const char *Level, int N, Array < D
     
     time_t now = time(NULL);
     localtime_r(&now, &tmbuf1);
-    sprintf(today, "%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon, tmbuf1.tm_mday);
+    sprintf(today, "%04d%02d%02d", tmbuf1.tm_year+1900, tmbuf1.tm_mon+1, tmbuf1.tm_mday);
 
     // Edit query down to series/study level to ask for #images per series/study
     DICOMDataObject *DDO2 = MakeCopy(DDO);

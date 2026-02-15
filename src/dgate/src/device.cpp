@@ -115,6 +115,7 @@ Spectra0018 Thu, 6 Mar 2014 15:43:54 -0300: Fix mismatched new/delete in device.
 20181115	mvh	Changed default of MAGDeviceThreshHold to 0
 20191221        mvh     Fix MakeListOfOldestPatientsOnDevice for no device passed
 20240922	mvh	Allow xxThreshHold and xxThreshold (3 times)
+20260215	mvh	Fix parsing of tm_mon in MakeListOfSeriesOnDevice; affects selection of series by age
 */
 
 #ifndef UNUSED_ARGUMENT
@@ -3183,6 +3184,7 @@ MakeListOfSeriesOnDevice(char *Device, char **SeriesList, int age, int kb)
 		memset(&tmbuf1, 0, sizeof(tmbuf1));
 		sscanf(SeriesDate, "%04d%02d%02d", &tmbuf1.tm_year, &tmbuf1.tm_mon, &tmbuf1.tm_mday);
 		tmbuf1.tm_year -= 1900;
+		tmbuf1.tm_mon  -= 1;
 		time_t t = mktime(&tmbuf1);
 #else
 		time_t t = (time_t)atoi(AccessTime);
