@@ -359,6 +359,7 @@ int	UseEscapeStringConstants=0;
 int	DoubleBackSlashToDB=0;
 int	UTF8ToDB=0;
 int	UTF8FromDB=0;
+int	UseNVARCHAR=0;
 
 int	FileCompressMode=0;
 char	PatientQuerySortOrder[256]="";
@@ -417,6 +418,10 @@ ConfigDBSpecials(void)
 	MyGetPrivateProfileString ( RootSC, "UTF8FromDB", "0",
 		(char*) Temp, 128, ConfigFile);
 	UTF8FromDB = atoi(Temp);
+
+	MyGetPrivateProfileString ( RootSC, "UseNVARCHAR", "0",
+		(char*) Temp, 128, ConfigFile);
+	UseNVARCHAR = atoi(Temp);
 
 	MyGetPrivateProfileString ( RootSC, "UseEscapeStringConstants", "0",
 		(char*) Temp, 128, ConfigFile);
@@ -2827,13 +2832,17 @@ MakeSafeStringValues (
 		if (strchr(s, '\\'))
 			(*sout++) = 'E';
 
+	// Add N prefix for Unicode support (NVARCHAR)
+	if (UseNVARCHAR)
+		(*sout++) = 'N';
+
 	(*sout++) = '\'';
 
 	Index = 0;
 	while(Index < Length)
-		{ // Convert to UTF-8, assuming ISO_IR 100 for now (ISO/IEC 8859-1 = Latin-1) 
-		  if (UTF8ToDB && (*sin&128)) 
-			{ 
+		{ // Convert to UTF-8, assuming ISO_IR 100 for now (ISO/IEC 8859-1 = Latin-1)
+		  if (UTF8ToDB && !UseNVARCHAR && (*sin&128))
+			{
 			*sout++=0xc2+(*sin>0xbf);
 			*sout++=(*sin&0x3f)+0x80;
 			}
@@ -2889,17 +2898,17 @@ MakeSafeDate ( VR *vr, char	*string )
 	char	*sin;
 	char	s[256];
 	UINT	Index;
+	char	*ptr = string;
 
-	(*string)='\'';
+	// Add N prefix for Unicode support (NVARCHAR)
+	if (UseNVARCHAR)
+		*ptr++ = 'N';
+
+	*ptr++ = '\'';
 	SetString(vr, s, 256);
 	Length = strlen(s);
 	sin = (char*)s;
-	sout = string + 1;
-
-	if (vr)
-		if(vr->Data)
-		{
-		Index = 0;
+	sout = ptr;
 		while(Index < Length)
 			{
 			switch (*sin)
