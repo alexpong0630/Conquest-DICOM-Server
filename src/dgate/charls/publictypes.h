@@ -7,7 +7,7 @@
 #include "config.h"
 
 #ifdef __cplusplus
-#include <iostream>
+#include <streambuf>
 #include <cstddef>
 #endif
 

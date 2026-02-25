@@ -2890,59 +2890,63 @@ MakeSafeStringValues (
 	}
 
 
-BOOL
-MakeSafeDate ( VR *vr, char	*string )
+	BOOL
+	MakeSafeDate ( VR *vr, char *string )
 	{
-	unsigned int Length;
-	char	*sout;
-	char	*sin;
-	char	s[256];
-	UINT	Index;
-	char	*ptr = string;
-
-	// Add N prefix for Unicode support (NVARCHAR)
-	if (UseNVARCHAR)
-		*ptr++ = 'N';
-
-	*ptr++ = '\'';
-	SetString(vr, s, 256);
-	Length = strlen(s);
-	sin = (char*)s;
-	sout = ptr;
+		unsigned int Length;
+		char    *sout;
+		char    *sin;
+		char    s[256];
+		UINT    Index = 0; // 修正：一定要初始化做 0
+		char    *ptr = string;
+	
+		// Add N prefix for Unicode support (NVARCHAR)
+		if (UseNVARCHAR)
+			*ptr++ = 'N';
+	
+		*ptr++ = '\'';
+		SetString(vr, s, 256);
+		Length = strlen(s);
+		sin = (char*)s;
+		sout = ptr;
+	
 		while(Index < Length)
-			{
+		{
 			switch (*sin)
-				{
-				case	'.':	// remove from ACR-NEMA v2 comp.
+			{
+				case '.':    // remove from ACR-NEMA v2 comp.
 					break;
-				case	'/':	// remove for safety
+				case '/':    // remove for safety
 					break;
-				case	'\'':
-					(*sout) = '\'';++sout;
-					(*sout) = '\'';++sout;
+				case '\'':
+					(*sout) = '\''; ++sout;
+					(*sout) = '\''; ++sout;
 					break;
-				case	'\"':
-					(*sout) = '\"';++sout;
-					(*sout) = '\"';++sout;
+				case '\"':
+					(*sout) = '\"'; ++sout;
+					(*sout) = '\"'; ++sout;
 					break;
-				case	0:	break;
+				case 0: 
+					break;
 				default:
 					(*sout) = (*sin);
 					++sout;
-				}
+			}
 			++sin;
 			++Index;
-			}
 		}
-	--sout;
-	if((*sout)==' ')
-		;
-	else
-		++sout;
-	(*sout) = '\'';++sout;
-	(*sout) = '\0';
+		// 修正：刪除咗原本多出嚟嗰個 }
 	
-	return ( TRUE );
+		--sout;
+		if((*sout) == ' ')
+			;
+		else
+			++sout;
+	
+		(*sout) = '\''; ++sout;
+		(*sout) = '\0';
+		
+		return ( TRUE );
 	}
 
 BOOL

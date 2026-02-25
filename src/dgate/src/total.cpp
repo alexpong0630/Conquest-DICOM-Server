@@ -90,10 +90,13 @@
 #define JPEGIGNORELOSSLESSJFIFCOLORSPACE	// fixes issue with BomberBugs image 12345, is lossless but states YcR coding
 
 #ifdef WINDOWS
+
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-#if _MSC_VER > 1700
+#if _MSC_VER > 1700 && _MSC_VER < 1900
   FILE _iob[] = { *stdin, *stdout, *stderr }; 
   extern "C" FILE * __cdecl __iob_func(void) { return _iob; }
 #endif
@@ -135,7 +138,6 @@
 #ifdef LUA51EXTERN
 #include "lua_dyn.c"
 #endif
-
 #include "storage.cxx"
 #include "verify.cxx"
 #include "dimsen.cxx"

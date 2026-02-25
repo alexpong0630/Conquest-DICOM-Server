@@ -297,6 +297,8 @@
 #define UNUSED_ARGUMENT(x) (void)x
 #endif
 
+#include <stdlib.h>
+#include <errno.h>
 #include "dicom.hpp"
 #include "nkiqrsop.hpp"
 #include "dgate.hpp"

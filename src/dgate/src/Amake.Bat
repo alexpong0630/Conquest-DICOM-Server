@@ -11,8 +11,8 @@ set luaextern=-DLUA51EXTERN
 rem set luaobj64=..\build64\lua.obj ..\build64\luasocket.lib
 rem set luaobj32=..\build32\lua.obj ..\build32\luasocket.lib
 
-set flags=/D_CRT_SECURE_NO_DEPRECATE -DWIN32 -DWINDOWS -DNATIVE_ENDIAN=1 -DUSESQLITE -DUSEMYSQL -DPOSTGRES -DHAVE_LIBJPEG -DHAVE_LIBCHARLS -DHAVE_LIBOPENJPEG2
-set libs=odbc32.lib odbccp32.lib wsock32.lib advapi32.lib user32.lib kernel32.lib
+set flags=/FIerrno.h /D_CRT_SECURE_NO_DEPRECATE -DWIN32 -DWINDOWS -DNATIVE_ENDIAN=1 -DHAVE_LIBJPEG -DHAVE_LIBCHARLS -DHAVE_LIBOPENJPEG2
+set libs=legacy_stdio_definitions.lib odbc32.lib odbccp32.lib wsock32.lib advapi32.lib user32.lib kernel32.lib
 
 set spath=%path%
 call ..\asetcompiler64.bat

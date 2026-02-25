@@ -7,3 +7,9 @@
 *.stat
 *.identcache
 *inholland*
+/src/dgate/build32
+/src/dgate/build64
+/.vs/Conquest-DICOM-Server/CopilotIndices/17.14.1091.29919
+/.vs/Conquest-DICOM-Server/FileContentIndex
+/.vs/Conquest-DICOM-Server/v17
+/.vs

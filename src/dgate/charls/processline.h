@@ -5,7 +5,9 @@
 #define CHARLS_PROCESSLINE
 
 #include "colortransform.h"
-#include <iostream>
+#include <streambuf>
+#include <ios>
+#include <algorithm>
 #include <vector>
 
 #ifdef _MSC_VER 
